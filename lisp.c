@@ -50,7 +50,10 @@
 #define ATOM_CONS   OBJECT(ATOM,30)
 #define ATOM_EQ     OBJECT(ATOM,35)
 #define ATOM_LAMBDA OBJECT(ATOM,38)
-#define UNDEFINED   OBJECT(ATOM,45)
+#define ATOM_READ   OBJECT(ATOM,45)
+#define ATOM_PEEK   OBJECT(ATOM,50)
+#define ATOM_INTERN OBJECT(ATOM,55)
+#define UNDEFINED   OBJECT(ATOM,62)
 
 const char kSymbols[] =
     "NIL\0"
@@ -63,6 +66,9 @@ const char kSymbols[] =
     "CONS\0"
     "EQ\0"
     "LAMBDA\0"
+    "READ\0"
+    "PEEK\0"
+    "INTERN\0"
 #if FUNDEF
     "*UNDEFINED"
 #endif
@@ -71,8 +77,8 @@ const char kSymbols[] =
 int g_look;
 int g_index;
 char g_token[128];
-int g_mem[8192];
-char g_str[8192];
+int g_mem[18192];
+char g_str[18192];
 
 int GetList(void);
 int GetObject(void);
@@ -146,10 +152,10 @@ void PrintString(char *s) {
   }
 }
 
-int GetChar(void) {
+int GetChar(char *prompt) {
   int b;
   static char *l, *p;
-  if (l || (l = p = bestlineWithHistory("* ", "sectorlisp"))) {
+  if (l || (l = p = bestlineWithHistory(prompt ? prompt : "* ", "sectorlisp"))) {
     if (*p) {
       b = *p++ & 255;
     } else {
@@ -168,13 +174,27 @@ void GetToken(void) {
   int al;
   char *di;
   di = g_token;
-  do {
-    if (g_look > ' ') {
+  while (g_look <= ' ') {
+    g_look = GetChar(NULL);
+  }
+  if (g_look == '"') {
+    do {
+      if (g_look == '\\') {
+        g_look = GetChar(NULL);
+      }
       *di++ = g_look;
-    }
-    al = g_look;
-    g_look = GetChar();
-  } while (al <= ' ' || (al > ')' && g_look > ')'));
+      g_look = GetChar(NULL);
+    } while (g_look != '"');
+    g_look = GetChar(NULL);
+  } else {
+    do {
+      if (g_look > ' ') {
+        *di++ = g_look;
+      }
+      al = g_look;
+      g_look = GetChar(NULL);
+    } while (al <= ' ' || (al > ')' && g_look > ')'));
+  }
   *di++ = 0;
 }
 
@@ -212,13 +232,14 @@ int GetList(void) {
 int GetObject(void) {
 #if QUOTES
   if (*g_token == '\'') return GetQuote();
+  if (*g_token == '"') return Quote(Intern(g_token+1));
 #endif
   if (*g_token == '(') return GetList();
   return Intern(g_token);
 }
 
 int ReadObject(void) {
-  g_look = GetChar();
+  g_look = GetChar(NULL);
   GetToken();
   return GetObject();
 }
@@ -301,6 +322,8 @@ int Evlis(int m, int a) {
   return Cons(di, si);
 }
 
+char read_buf[2];
+
 int Apply(int fn, int x, int a) {
   int t1, si, ax;
   if (ISATOM(fn)) {
@@ -319,6 +342,24 @@ int Apply(int fn, int x, int a) {
       return Cons(Car(x), Car(Cdr(x)));
     case ATOM_EQ:
       return Car(x) == Car(Cdr(x)) ? ATOM_T : NIL;
+    case ATOM_READ:
+      if (!*read_buf) *read_buf = GetChar("] ");
+      t1 = Intern(read_buf);
+      *read_buf = 0;
+      return t1;
+    case ATOM_PEEK:
+      if (!*read_buf) *read_buf = GetChar("] ");
+      t1 = Intern(read_buf);
+      return t1;
+    case ATOM_INTERN:
+      t1 = 0;
+      x = Car(x);
+      while (x != NIL) {
+        g_token[t1++] = g_str[VALUE(Car(x))];
+        x = Cdr(x);
+      }
+      g_token[t1] = 0;
+      return Intern(g_token);
     default:
       return Apply(Eval(fn, a), x, a);
     }
@@ -370,6 +411,7 @@ int Eval(int e, int a) {
 
 void Repl(void) {
   for (;;) {
+    printf("Mem usage: %d\n", g_index);
     Print(Eval(Read(), NIL));
   }
 }

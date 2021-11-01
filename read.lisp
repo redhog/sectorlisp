@@ -1,0 +1,17 @@
+((LAMBDA (PARSE) (PARSE PARSE NIL))
+ (QUOTE (LAMBDA (PARSE STATE DUMMY)
+         (COND ((EQ STATE NIL)
+                (COND ((EQ (PEEK) " ") (PARSE PARSE NIL (READ)))
+                      ((EQ (PEEK) "\
+") (PARSE PARSE NIL (READ)))
+                      ((EQ (PEEK) "(") (PARSE PARSE 'LIST (READ)))
+                      ('T (INTERN (PARSE PARSE 'ATOM NIL)))))
+               ((EQ STATE 'LIST)
+                (COND ((EQ (PEEK) ")") (CAR (CONS NIL (READ))))
+                      ('T (CONS (PARSE PARSE NIL NIL) (PARSE PARSE STATE NIL)))))
+               ((EQ STATE 'ATOM)
+                (COND ((EQ (PEEK) " ") NIL)
+                      ((EQ (PEEK) "\
+") NIL)
+                      ((EQ (PEEK) ")") NIL)
+                      ('T (CONS (READ) (PARSE PARSE STATE NIL)))))))))
